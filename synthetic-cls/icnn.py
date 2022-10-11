@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
-import tensorflow as tf
+# import tensorflow as tf
+import tensorflow.compat.v1 as tf
 import tflearn
 
 import numpy as np
@@ -87,13 +88,13 @@ def variable_summaries(var, name=None):
         name = var.name
     with tf.name_scope('summaries'):
         mean = tf.reduce_mean(var)
-        tf.scalar_summary('mean/' + name, mean)
+        tf.summary.scalar('mean/' + name, mean)
         with tf.name_scope('stdev'):
             stdev = tf.sqrt(tf.reduce_mean(tf.square(var - mean)))
-        tf.scalar_summary('stdev/' + name, stdev)
-        tf.scalar_summary('max/' + name, tf.reduce_max(var))
-        tf.scalar_summary('min/' + name, tf.reduce_min(var))
-        tf.histogram_summary(name, var)
+        tf.summary.scalar('stdev/' + name, stdev)
+        tf.summary.scalar('max/' + name, tf.reduce_max(var))
+        tf.summary.scalar('min/' + name, tf.reduce_min(var))
+        tf.summary.histogram(name, var)
 
 class Model:
     def __init__(self, nFeatures, nLabels, sess, model, nGdIter):
@@ -148,7 +149,7 @@ class Model:
         # for g,v in self.gv_:
         #     variable_summaries(g, 'gradients/'+v.name)
 
-        self.merged = tf.merge_all_summaries()
+        self.merged = tf.summary.merge_all()
         self.saver = tf.train.Saver(max_to_keep=0)
 
     def train(self, args, dataX, dataY):
@@ -166,7 +167,7 @@ class Model:
         trainW = csv.writer(trainF)
         trainW.writerow(trainFields)
 
-        self.trainWriter = tf.train.SummaryWriter(os.path.join(save, 'train'),
+        self.trainWriter = tf.summary.FileWriter(os.path.join(save, 'train'),
                                                   self.sess.graph)
         self.sess.run(tf.initialize_all_variables())
         if not args.noncvx:
@@ -252,14 +253,14 @@ class Model:
                     zu_u = fc(prevU, prevU_sz, reuse=reuse, scope=s,
                             activation='relu', bias=True)
                 with tf.variable_scope('z{}_zu_proj'.format(layerI)) as s:
-                    z_zu = fc(tf.mul(prevZ, zu_u), sz, reuse=reuse, scope=s,
+                    z_zu = fc(tf. multiply(prevZ, zu_u), sz, reuse=reuse, scope=s,
                                 bias=False)
                 z_add.append(z_zu)
 
             with tf.variable_scope('z{}_yu_u'.format(layerI)) as s:
                 yu_u = fc(prevU, self.nLabels, reuse=reuse, scope=s, bias=True)
             with tf.variable_scope('z{}_yu'.format(layerI)) as s:
-                z_yu = fc(tf.mul(y, yu_u), sz, reuse=reuse, scope=s, bias=False)
+                z_yu = fc(tf. multiply(y, yu_u), sz, reuse=reuse, scope=s, bias=False)
             z_add.append(z_yu)
 
             with tf.variable_scope('z{}_u'.format(layerI)) as s:

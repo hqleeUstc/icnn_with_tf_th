@@ -77,12 +77,12 @@ def f_shallow(self, x, y, szs, reuse=False):
     #     W_x = getW(self.nFeatures, szs[0], 'x')
     #     b = getB(szs[0])
     #     u0 = tf.identity(tf.matmul(x, W_x) + b, name='preact')
-    #     tf.histogram_summary(u0.name, u0)
+    #     tf.summary.histogram(u0.name, u0)
     #     u0 = act(u0, name='act')
-    #     tf.histogram_summary(u0.name, u0)
+    #     tf.summary.histogram(u0.name, u0)
     #     u0 = tflearn.layers.normalization.batch_normalization(u0, reuse=reuse,
     #                                                         scope=s, name='bn')
-    #     tf.histogram_summary(u0.name, u0)
+    #     tf.summary.histogram(u0.name, u0)
 
     # ui = u0
     # i,j = 0,1
@@ -90,13 +90,13 @@ def f_shallow(self, x, y, szs, reuse=False):
     #     W_u = getW(szs[i], szs[j], 'u')
     #     b = getB(szs[j])
     #     uj = tf.identity(tf.matmul(ui, W_u) + b, name='preact')
-    #     tf.histogram_summary(uj.name, uj)
+    #     tf.summary.histogram(uj.name, uj)
     #     if len(szs) > i+2:
     #         uj = act(uj, name='act')
-    #         tf.histogram_summary(uj.name, uj)
+    #         tf.summary.histogram(uj.name, uj)
     #         uj = tflearn.layers.normalization.batch_normalization(uj, reuse=reuse,
     #                                                               scope=s, name='bn')
-    #         tf.histogram_summary(uj.name, uj)
+    #         tf.summary.histogram(uj.name, uj)
 
     # zSz = 10
     # with tf.variable_scope('z0'):
@@ -104,6 +104,6 @@ def f_shallow(self, x, y, szs, reuse=False):
     # with tf.variable_scope('z1'):
     #     z1 = tf.reshape(tf.matmul(z0, getW(zSz, 1, 'z')) + getB(1), [-1])
 
-    # zk = -tf.reduce_sum(tf.mul(x, y), 1)
+    # zk = -tf.reduce_sum(tf.multiply(x, y), 1)
 
     return tf.reshape(zk, [-1], name='energies')

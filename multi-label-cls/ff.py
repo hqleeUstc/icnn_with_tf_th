@@ -11,7 +11,8 @@ import os
 import sys
 import time
 
-import tensorflow as tf
+# import tensorflow as tf
+import tensorflow.compat.v1 as tf
 import tflearn
 import tflearn.initializations as tfi
 import tflearn.data_flow
@@ -154,7 +155,7 @@ def main():
     config = tf.ConfigProto()
     config.gpu_options.allow_growth = True
     with tf.Session(config=config) as sess:
-        graphWriter = tf.train.SummaryWriter(os.path.join(save, 'graph'), sess.graph)
+        graphWriter = tf.summary.FileWriter(os.path.join(save, 'graph'), sess.graph)
         sess.run(tf.initialize_all_variables())
 
         nParams = np.sum(v.get_shape().num_elements() for v in tf.trainable_variables())

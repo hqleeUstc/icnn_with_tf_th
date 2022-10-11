@@ -8,7 +8,8 @@ import json
 
 import gym
 import numpy as np
-import tensorflow as tf
+# import tensorflow as tf
+import tensorflow.compat.v1 as tf
 
 import agent
 import normalized_env
@@ -22,7 +23,7 @@ srcDir = os.path.dirname(os.path.realpath(__file__))
 rlDir = os.path.join(srcDir, '..')
 plotScr = os.path.join(rlDir, 'plot-single.py')
 
-flags = tf.app.flags
+flags = tf.flags
 FLAGS = flags.FLAGS
 flags.DEFINE_string('env', '', 'gym environment')
 flags.DEFINE_string('outdir', 'output', 'output directory')
@@ -43,8 +44,8 @@ setproctitle.setproctitle('ICNN.RL.{}.{}.{}'.format(
     FLAGS.env,FLAGS.model,FLAGS.tfseed))
 
 os.makedirs(FLAGS.outdir, exist_ok=True)
-with open(os.path.join(FLAGS.outdir, 'flags.json'), 'w') as f:
-    json.dump(FLAGS.__flags, f, indent=2, sort_keys=True)
+# with open(os.path.join(FLAGS.outdir, 'flags.json'), 'w') as f:
+#     json.dump(FLAGS.__flags, f, indent=2, sort_keys=True)
 
 if FLAGS.model == 'DDPG':
     import ddpg
@@ -67,9 +68,13 @@ class Experiment(object):
         self.env = normalized_env.make_normalized_env(gym.make(FLAGS.env))
         tf.set_random_seed(FLAGS.tfseed)
         np.random.seed(FLAGS.npseed)
-        self.env.monitor.start(os.path.join(FLAGS.outdir, 'monitor'), force=FLAGS.force)
+        # self.env.monitor.start(os.path.join(FLAGS.outdir, 'monitor'), force=FLAGS.force)
+        gym.wrappers.Monitor(self.env, os.path.join(FLAGS.outdir, 'monitor'), force=FLAGS.force)
+
         self.env.seed(FLAGS.gymseed)
-        gym.logger.setLevel(gym.logging.WARNING)
+        gym.logger.setLevel(gym.logger.WARN)
+
+        # gym.logger.setLevel(gym.logging.WARNING)
 
         dimO = self.env.observation_space.shape
         dimA = self.env.action_space.shape
@@ -109,13 +114,13 @@ class Experiment(object):
 
             os.system('{} {}'.format(plotScr, FLAGS.outdir))
 
-        self.env.monitor.close()
+        # self.env.monitor.close()
         os.makedirs(os.path.join(FLAGS.outdir, "tf"))
         ckpt = os.path.join(FLAGS.outdir, "tf/model.ckpt")
         self.agent.saver.save(self.agent.sess, ckpt)
 
     def run_episode(self, test=True, monitor=False):
-        self.env.monitor.configure(lambda _: monitor)
+        # self.env.monitor.configure(lambda _: monitor)
         observation = self.env.reset()
         self.agent.reset(observation)
         sum_reward = 0
@@ -123,20 +128,20 @@ class Experiment(object):
         term = False
         times = {'act': [], 'envStep': [], 'obs': []}
         while not term:
-            start = time.clock()
+            start = time. perf_counter()
             action = self.agent.act(test=test)
-            times['act'].append(time.clock()-start)
+            times['act'].append(time. perf_counter()-start)
 
-            start = time.clock()
+            start = time. perf_counter()
             observation, reward, term, info = self.env.step(action)
-            times['envStep'].append(time.clock()-start)
+            times['envStep'].append(time. perf_counter()-start)
             term = (not test and timestep + 1 >= FLAGS.tmax) or term
 
             filtered_reward = self.env.filter_reward(reward)
 
-            start = time.clock()
+            start = time. perf_counter()
             self.agent.observe(filtered_reward, term, observation, test=test)
-            times['obs'].append(time.clock()-start)
+            times['obs'].append(time. perf_counter()-start)
 
             sum_reward += reward
             timestep += 1

@@ -5,7 +5,7 @@ import gym
 import numpy as np
 import tensorflow as tf
 
-flags = tf.app.flags
+flags = tf.compat.v1.flags
 FLAGS = flags.FLAGS
 flags.DEFINE_float('reward_k', 1, 'reward factor')
 

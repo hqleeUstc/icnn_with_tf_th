@@ -6,7 +6,7 @@ import tensorflow as tf
 import ddpg_nets_dm
 from replay_memory import ReplayMemory
 
-flags = tf.app.flags
+flags = tf.compat.v1.flags
 FLAGS = flags.FLAGS
 
 
@@ -83,7 +83,7 @@ class Agent:
         # q targets
         act2 = nets.policy(obs2, theta=self.theta_pt)
         q2 = nets.qfunction(obs2, act2, theta=self.theta_qt)
-        q_target = tf.stop_gradient(tf.select(term2, rew, rew + discount * q2))
+        q_target = tf.stop_gradient(tf.where(term2, rew, rew + discount * q2))
         # q_target = tf.stop_gradient(rew + discount * q2)
         # q loss
         td_error = q_train - q_target
@@ -97,11 +97,11 @@ class Agent:
         with tf.control_dependencies([optimize_q]):
             train_q = tf.group(update_qt)
 
-        summary_writer = tf.train.SummaryWriter(os.path.join(FLAGS.outdir, 'board'), self.sess.graph)
+        summary_writer = tf.summary.FileWriter(os.path.join(FLAGS.outdir, 'board'), self.sess.graph)
         summary_list = []
-        summary_list.append(tf.scalar_summary('Qvalue', tf.reduce_mean(q_train)))
-        summary_list.append(tf.scalar_summary('loss', ms_td_error))
-        summary_list.append(tf.scalar_summary('reward', tf.reduce_mean(rew)))
+        summary_list.append(tf.summary.scalar('Qvalue', tf.reduce_mean(q_train)))
+        summary_list.append(tf.summary.scalar('loss', ms_td_error))
+        summary_list.append(tf.summary.scalar('reward', tf.reduce_mean(rew)))
 
         # tf functions
         with self.sess.as_default():
@@ -164,7 +164,7 @@ class Fun:
     def __init__(self, inputs, outputs, summary_ops=None, summary_writer=None, session=None):
         self._inputs = inputs if type(inputs) == list else [inputs]
         self._outputs = outputs
-        self._summary_op = tf.merge_summary(summary_ops) if type(summary_ops) == list else summary_ops
+        self._summary_op = tf.summary.merge(summary_ops) if type(summary_ops) == list else summary_ops
         self._session = session or tf.get_default_session()
         self._writer = summary_writer
 

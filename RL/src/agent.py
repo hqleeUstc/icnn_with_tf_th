@@ -1,6 +1,6 @@
 import tensorflow as tf
 
-flags = tf.app.flags
+flags = tf.compat.v1.flags
 FLAGS = flags.FLAGS
 
 flags.DEFINE_integer('warmup', 1000, 'time without training but only filling the replay memory')

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
-import tensorflow as tf
+# import tensorflow as tf
+import tensorflow.compat.v1 as tf
 import tflearn
 from tensorflow.python.ops import gen_nn_ops
 from tensorflow.python.ops import array_ops
@@ -93,13 +94,13 @@ def variable_summaries(var, name=None):
         name = var.name
     with tf.name_scope('summaries'):
         mean = tf.reduce_mean(var)
-        tf.scalar_summary('mean/' + name, mean)
+        tf.summary.scalar('mean/' + name, mean)
         with tf.name_scope('stdev'):
             stdev = tf.sqrt(tf.reduce_mean(tf.square(var - mean)))
-        tf.scalar_summary('stdev/' + name, stdev)
-        tf.scalar_summary('max/' + name, tf.reduce_max(var))
-        tf.scalar_summary('min/' + name, tf.reduce_min(var))
-        tf.histogram_summary(name, var)
+        tf.summary.scalar('stdev/' + name, stdev)
+        tf.summary.scalar('max/' + name, tf.reduce_max(var))
+        tf.summary.scalar('min/' + name, tf.reduce_min(var))
+        tf.summary.histogram(name, var)
 
 class Model:
     def __init__(self, inputSz, outputSz, sess):
@@ -126,8 +127,8 @@ class Model:
         self.dE_entr_dy_ = tf.gradients(self.E_entr_, self.y_)[0]
         self.dE_entr_dyFlat_ = tf.contrib.layers.flatten(self.dE_entr_dy_)
 
-        self.F_ = tf.mul(self.c_, self.E_) + \
-                  tf.reduce_sum(tf.mul(self.dE_dyFlat_, self.v_), 1)
+        self.F_ = tf.multiply(self.c_, self.E_) + \
+                  tf.reduce_sum(tf.multiply(self.dE_dyFlat_, self.v_), 1)
 
         # regLosses = tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES)
         # self.F_reg_ = self.F_ + 0.1*regLosses
@@ -149,7 +150,7 @@ class Model:
             variable_summaries(g, 'gradients/'+v.name)
 
         self.l_yN_ = tf.placeholder(tf.float32, name='l_yN')
-        tf.scalar_summary('mse', self.l_yN_)
+        tf.summary.scalar('mse', self.l_yN_)
 
         self.nBundleIter_ = tf.placeholder(tf.float32, [None], name='nBundleIter')
         variable_summaries(self.nBundleIter_)
@@ -157,7 +158,7 @@ class Model:
         self.nActive_ = tf.placeholder(tf.float32, [None], name='nActive')
         variable_summaries(self.nActive_)
 
-        self.merged = tf.merge_all_summaries()
+        self.merged = tf.summary.merge_all()
         self.saver = tf.train.Saver(max_to_keep=0)
 
 
@@ -183,7 +184,7 @@ class Model:
         testW.writerow(testFields)
         testF.flush()
 
-        self.trainWriter = tf.train.SummaryWriter(os.path.join(save, 'train'),
+        self.trainWriter = tf.summary.FileWriter(os.path.join(save, 'train'),
                                                   self.sess.graph)
         self.sess.run(tf.initialize_all_variables())
         if not args.noncvx:
@@ -381,7 +382,7 @@ class Model:
                     zu_u = conv(prevU, prev_nFilter, 3, reuse=reuse,
                                 scope=s, activation='relu', bias=True, regularizer=reg)
                 with tf.variable_scope('z{}_zu_proj'.format(layerI)) as s:
-                    z_zu = conv(tf.mul(prevZ, zu_u), nFilter, kSz, strides=strides,
+                    z_zu = conv(tf.multiply(prevZ, zu_u), nFilter, kSz, strides=strides,
                                 reuse=reuse, scope=s, bias=False, regularizer=reg)
                 z_add.append(z_zu)
 
@@ -389,7 +390,7 @@ class Model:
                 yu_u = conv(prevU, 1, 3, reuse=reuse, scope=s,
                             bias=True, regularizer=reg)
             with tf.variable_scope('z{}_yu'.format(layerI)) as s:
-                z_yu = conv(tf.mul(y_red, yu_u), nFilter, kSz, strides=strides,
+                z_yu = conv(tf.multiply(y_red, yu_u), nFilter, kSz, strides=strides,
                             reuse=reuse, scope=s, bias=False, regularizer=reg)
             with tf.variable_scope('z{}_y_red'.format(layerI)) as s:
                 y_red = conv(y_red, 1, kSz, strides=strides, reuse=reuse,
@@ -418,7 +419,7 @@ class Model:
                 zu_u = fc(prevU, prevU_sz, reuse=reuse, scope=s,
                             activation='relu', bias=True, regularizer=reg)
             with tf.variable_scope('z{}_zu_proj'.format(layerI)) as s:
-                z_zu = fc(tf.mul(prevZ, zu_u), sz, reuse=reuse, scope=s,
+                z_zu = fc(tf.multiply(prevZ, zu_u), sz, reuse=reuse, scope=s,
                             bias=False, regularizer=reg)
             z_add.append(z_zu)
 
@@ -429,7 +430,7 @@ class Model:
             #     yu_u = fc(prevU, ycf_sz, reuse=reuse, scope=s, bias=True,
             #               regularizer=reg)
             # with tf.variable_scope('z{}_yu'.format(layerI)) as s:
-            #     z_yu = fc(tf.mul(y_red_flat, yu_u), sz, reuse=reuse, scope=s,
+            #     z_yu = fc(tf.multiply(y_red_flat, yu_u), sz, reuse=reuse, scope=s,
             #               bias=False, regularizer=reg)
             # z_add.append(z_yu)
 

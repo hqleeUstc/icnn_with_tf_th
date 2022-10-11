@@ -13,7 +13,7 @@ from datetime import datetime
 
 import tensorflow as tf
 
-flags = tf.app.flags
+flags = tf.compat.v1.flags
 FLAGS = flags.FLAGS
 flags.DEFINE_boolean('copy', False, 'copy code folder to outdir')
 flags.DEFINE_boolean('gdb', False, 'open gdb on error')

@@ -2,7 +2,8 @@
 
 import setGPU
 
-import tensorflow as tf
+# import tensorflow as tf
+import tensorflow.compat.v1 as tf
 import tflearn
 from tensorflow.python.ops import gen_nn_ops
 from tensorflow.python.ops import array_ops
@@ -109,13 +110,13 @@ def variable_summaries(var, name=None):
         name = var.name
     with tf.name_scope('summaries'):
         mean = tf.reduce_mean(var)
-        tf.scalar_summary('mean/' + name, mean)
+        tf.summary.scalar('mean/' + name, mean)
         with tf.name_scope('stdev'):
             stdev = tf.sqrt(tf.reduce_mean(tf.square(var - mean)))
-        tf.scalar_summary('stdev/' + name, stdev)
-        tf.scalar_summary('max/' + name, tf.reduce_max(var))
-        tf.scalar_summary('min/' + name, tf.reduce_min(var))
-        tf.histogram_summary(name, var)
+        tf.summary.scalar('stdev/' + name, stdev)
+        tf.summary.scalar('max/' + name, tf.reduce_max(var))
+        tf.summary.scalar('min/' + name, tf.reduce_min(var))
+        tf.summary.histogram(name, var)
 
 class Model:
     def __init__(self, inputSz, outputSz, sess, nGdIter):
@@ -167,7 +168,7 @@ class Model:
         # for g,v in self.gv_:
         #     variable_summaries(g, 'gradients/'+v.name)
 
-        self.merged = tf.merge_all_summaries()
+        self.merged = tf.summary.merge_all()
         self.saver = tf.train.Saver(max_to_keep=0)
 
     def train(self, args, trainX, trainY, valX, valY):
@@ -190,7 +191,7 @@ class Model:
         testW = csv.writer(testF)
         testW.writerow(testFields)
 
-        self.trainWriter = tf.train.SummaryWriter(os.path.join(save, 'train'),
+        self.trainWriter = tf.summary.FileWriter(os.path.join(save, 'train'),
                                                   self.sess.graph)
         self.sess.run(tf.initialize_all_variables())
         if not args.noncvx:
@@ -319,7 +320,7 @@ class Model:
                     zu_u = conv(prevU, prev_nFilter, 3, reuse=reuse,
                                 scope=s, activation='relu', bias=True, regularizer=reg)
                 with tf.variable_scope('z{}_zu_proj'.format(layerI)) as s:
-                    z_zu = conv(tf.mul(prevZ, zu_u), nFilter, kSz, strides=strides,
+                    z_zu = conv(tf.multiply(prevZ, zu_u), nFilter, kSz, strides=strides,
                                 reuse=reuse, scope=s, bias=False, regularizer=reg)
                 z_add.append(z_zu)
 
@@ -327,7 +328,7 @@ class Model:
                 yu_u = conv(prevU, 1, 3, reuse=reuse, scope=s,
                             bias=True, regularizer=reg)
             with tf.variable_scope('z{}_yu'.format(layerI)) as s:
-                z_yu = conv(tf.mul(y_red, yu_u), nFilter, kSz, strides=strides,
+                z_yu = conv(tf.multiply(y_red, yu_u), nFilter, kSz, strides=strides,
                             reuse=reuse, scope=s, bias=False, regularizer=reg)
             # dsW_ = tf.constant(np.ones((strides[1], strides[2], 1, 1))/ \
                                # (strides[1]*strides[2]), dtype=tf.float32)
@@ -359,7 +360,7 @@ class Model:
                 zu_u = fc(prevU, prevU_sz, reuse=reuse, scope=s,
                             activation='relu', bias=True, regularizer=reg)
             with tf.variable_scope('z{}_zu_proj'.format(layerI)) as s:
-                z_zu = fc(tf.mul(prevZ, zu_u), sz, reuse=reuse, scope=s,
+                z_zu = fc(tf.multiply(prevZ, zu_u), sz, reuse=reuse, scope=s,
                             bias=False, regularizer=reg)
             z_add.append(z_zu)
 
@@ -368,7 +369,7 @@ class Model:
             #     yu_u = fc(prevU, ycf_sz, reuse=reuse, scope=s, bias=True,
             #               regularizer=reg)
             # with tf.variable_scope('z{}_yu'.format(layerI)) as s:
-            #     z_yu = fc(tf.mul(y_red_flat, yu_u), sz, reuse=reuse, scope=s,
+            #     z_yu = fc(tf.multiply(y_red_flat, yu_u), sz, reuse=reuse, scope=s,
             #               bias=False, regularizer=reg)
             # z_add.append(z_yu)
 

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3.4
 
-import tensorflow as tf
+# import tensorflow as tf
+import tensorflow.compat.v1 as tf
 import tflearn
 
 import numpy as np

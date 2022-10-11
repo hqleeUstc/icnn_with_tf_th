@@ -2,7 +2,7 @@ import os
 
 import numpy as np
 import numpy.random as npr
-import tensorflow as tf
+import tensorflow.compat.v1 as tf
 import tflearn
 
 import bundle_entropy
@@ -13,11 +13,12 @@ import matplotlib as mpl
 mpl.use('Agg')
 import matplotlib.pyplot as plt
 plt.style.use('bmh')
-from matplotlib.mlab import griddata
+# from matplotlib.mlab import griddata
+from scipy.interpolate import griddata
 
 from sklearn.decomposition import PCA
 
-flags = tf.app.flags
+flags = tf.compat.v1.flags
 FLAGS = flags.FLAGS
 
 # Input Convex Neural Network
@@ -75,14 +76,14 @@ class Agent:
         q_target_entr = -negQ_entr_target
 
         if FLAGS.icnn_opt == 'adam':
-            y = tf.select(term_target, rew, rew + discount * q_target_entr)
+            y = tf.where(term_target, rew, rew + discount * q_target_entr)
             y = tf.maximum(q_entr - 1., y)
             y = tf.minimum(q_entr + 1., y)
             y = tf.stop_gradient(y)
             td_error = q_entr - y
         elif FLAGS.icnn_opt == 'bundle_entropy':
             raise RuntimError("Needs checking.")
-            q_target = tf.select(term2, rew, rew + discount * q2_entropy)
+            q_target = tf.where(term2, rew, rew + discount * q2_entropy)
             q_target = tf.maximum(q_entropy - 1., q_target)
             q_target = tf.minimum(q_entropy + 1., q_target)
             q_target = tf.stop_gradient(q_target)
@@ -109,15 +110,15 @@ class Agent:
         optimize_q = optim_q.apply_gradients(grads_and_vars_q)
 
 
-        summary_writer = tf.train.SummaryWriter(os.path.join(FLAGS.outdir, 'board'),
+        summary_writer = tf.summary.FileWriter(os.path.join(FLAGS.outdir, 'board'),
                                                 self.sess.graph)
         if FLAGS.icnn_opt == 'adam':
-            tf.scalar_summary('Qvalue', tf.reduce_mean(q))
+            tf.summary.scalar('Qvalue', tf.reduce_mean(q))
         elif FLAGS.icnn_opt == 'bundle_entropy':
-            tf.scalar_summary('Qvalue', tf.reduce_mean(q_entr))
-        tf.scalar_summary('loss', ms_td_error)
-        tf.scalar_summary('reward', tf.reduce_mean(rew))
-        merged = tf.merge_all_summaries()
+            tf.summary.scalar('Qvalue', tf.reduce_mean(q_entr))
+        tf.summary.scalar('loss', ms_td_error)
+        tf.summary.scalar('reward', tf.reduce_mean(rew))
+        merged = tf.summary.merge_all()
 
         # tf functions
         with self.sess.as_default():
@@ -364,7 +365,7 @@ class Agent:
                               regularizer=reg, bias_init=tf.constant_initializer(1.))
                     variable_summaries(zu_u, suffix='zu_u{}'.format(i))
                 with tf.variable_scope('z{}_zu_proj'.format(i)) as s:
-                    z_zu = fc(tf.mul(prevZ, zu_u), sz, reuse=reuse, scope=s,
+                    z_zu = fc(tf.multiply(prevZ, zu_u), sz, reuse=reuse, scope=s,
                               bias=False, regularizer=reg)
                     variable_summaries(z_zu, suffix='z_zu{}'.format(i))
                 z_zs.append(z_zu)
@@ -375,7 +376,7 @@ class Agent:
                           regularizer=reg, bias_init=tf.constant_initializer(1.))
                 variable_summaries(yu_u, suffix='yu_u{}'.format(i))
             with tf.variable_scope('z{}_yu'.format(i)) as s:
-                z_yu = fc(tf.mul(y, yu_u), sz, reuse=reuse, scope=s, bias=False,
+                z_yu = fc(tf.multiply(y, yu_u), sz, reuse=reuse, scope=s, bias=False,
                           regularizer=reg)
                 z_ys.append(z_yu)
                 variable_summaries(z_yu, suffix='z_yu{}'.format(i))
@@ -416,8 +417,8 @@ class Fun:
     def __init__(self, inputs, outputs, summary_ops=None, summary_writer=None, session=None):
         self._inputs = inputs if type(inputs) == list else [inputs]
         self._outputs = outputs
-        # self._summary_op = tf.merge_summary(summary_ops) if type(summary_ops) == list else summary_ops
-        self._summary_op = tf.merge_summary(summary_ops) if type(summary_ops) == list else summary_ops
+        # self._summary_op = tf.summary.merge(summary_ops) if type(summary_ops) == list else summary_ops
+        self._summary_op = tf.summary.merge(summary_ops) if type(summary_ops) == list else summary_ops
         self._session = session or tf.get_default_session()
         self._writer = summary_writer
 

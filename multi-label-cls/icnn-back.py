@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
-import tensorflow as tf
+# import tensorflow as tf
+import tensorflow.compat.v1 as tf
 import tflearn
 
 import numpy as np
@@ -272,7 +273,7 @@ class Model:
                     zu_u = fc(prevU, szs[i-1], reuse=reuse, scope=s,
                               activation='relu', bias=True, regularizer=reg)
                 with tf.variable_scope('z{}_zu_proj'.format(i)) as s:
-                    z_zu = fc(tf.mul(prevZ, zu_u), sz, reuse=reuse, scope=s,
+                    z_zu = fc(tf.multiply(prevZ, zu_u), sz, reuse=reuse, scope=s,
                               bias=False, regularizer=reg)
                 self.z_zs.append(z_zu)
                 z_add.append(z_zu)
@@ -281,7 +282,7 @@ class Model:
                 yu_u = fc(prevU, self.nLabels, reuse=reuse, scope=s, bias=True,
                           regularizer=reg)
             with tf.variable_scope('z{}_yu'.format(i)) as s:
-                z_yu = fc(tf.mul(y, yu_u), sz, reuse=reuse, scope=s, bias=False,
+                z_yu = fc(tf.multiply(y, yu_u), sz, reuse=reuse, scope=s, bias=False,
                           regularizer=reg)
                 self.z_ys.append(z_yu)
             z_add.append(z_yu)
