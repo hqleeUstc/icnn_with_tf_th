@@ -5,6 +5,13 @@ import numpy.random as npr
 import tensorflow.compat.v1 as tf
 import tflearn
 
+import torch as th
+from torch.autograd import Variable
+from torch import nn, optim, autograd
+import torch.nn.functional as F
+import torchvision
+from torch.utils.tensorboard import SummaryWriter
+
 import bundle_entropy
 from replay_memory import ReplayMemory
 from helper import variable_summaries
@@ -45,47 +52,69 @@ class Agent:
             raise RuntimeError("Unrecognized ICNN optimizer: "+FLAGS.icnn_opt)
 
         self.rm = ReplayMemory(FLAGS.rmsize, dimO, dimA)
-        self.sess = tf.Session(config=tf.ConfigProto(
-            inter_op_parallelism_threads=FLAGS.thread,
-            log_device_placement=False,
-            allow_soft_placement=True,
-            gpu_options=tf.GPUOptions(allow_growth=True)))
+        th.set_num_threads(FLAGS.thread)
+
+        # self.sess = tf.Session(config=tf.ConfigProto(
+        #     inter_op_parallelism_threads=FLAGS.thread,
+        #     log_device_placement=False,
+        #     allow_soft_placement=True,
+        #     gpu_options=tf.GPUOptions(allow_growth=True)))
 
         self.noise = np.zeros(self.dimA)
 
-        obs = tf.placeholder(tf.float32, [None, dimO], "obs")
-        act = tf.placeholder(tf.float32, [None, dimA], "act")
-        rew = tf.placeholder(tf.float32, [None], "rew")
-        with tf.variable_scope('q'):
-            negQ = self.negQ(obs, act)
-        negQ_entr = negQ - entropy(act)
-        q = -negQ
-        q_entr = -negQ_entr
-        act_grad, = tf.gradients(negQ, act)
-        act_grad_entr, = tf.gradients(negQ_entr, act)
+        # obs = tf.placeholder(tf.float32, [None, dimO], "obs")
+        # act = tf.placeholder(tf.float32, [None, dimA], "act")
+        # rew = tf.placeholder(tf.float32, [None], "rew")
+        # obs = Variable(th.randn(None, dimO).type(float))
+        # act = Variable(th.randn(None, dimA).type(float))
+        # rew = Variable(th.randn(None).type(float))
+        # with tf.variable_scope('q'):
+        # negQ = self.negQ(obs, act)
+        # negQ_entr = negQ - entropy(act)
+        # q = -negQ
+        # q_entr = -negQ_entr
+        # act_grad, = tf.gradients(negQ, act)
+        # act_grad_entr, = tf.gradients(negQ_entr, act)
+        # # act_grad, = th.autograd.grad(negQ, act)
+        # # act_grad_entr, = th.autograd.grad(negQ_entr, act)
 
-        obs_target = tf.placeholder(tf.float32, [None, dimO], "obs_target")
-        act_target = tf.placeholder(tf.float32, [None, dimA], "act_target")
-        term_target = tf.placeholder(tf.bool, [None], "term_target")
-        with tf.variable_scope('q_target'):
-            negQ_target = self.negQ(obs_target, act_target)
-        negQ_entr_target = negQ_target - entropy(act_target)
-        act_target_grad, = tf.gradients(negQ_target, act_target)
-        act_entr_target_grad, = tf.gradients(negQ_entr_target, act_target)
-        q_target = -negQ_target
-        q_target_entr = -negQ_entr_target
+        # obs_target = tf.placeholder(tf.float32, [None, dimO], "obs_target")
+        # act_target = tf.placeholder(tf.float32, [None, dimA], "act_target")
+        # term_target = tf.placeholder(tf.bool, [None], "term_target")
+        # with tf.variable_scope('q_target'):
+        #     negQ_target = self.negQ(obs_target, act_target)
+        
+        # negQ_entr_target = negQ_target - entropy(act_target)
+        # act_target_grad, = tf.gradients(negQ_target, act_target)
+        # act_entr_target_grad, = tf.gradients(negQ_entr_target, act_target)
+
+        # act_target_grad, = th.autograd.grad(negQ_target, act_target)
+        # act_entr_target_grad, = th.autograd.grad(negQ_entr_target, act_target)
+        # q_target = -negQ_target
+        # q_target_entr = -negQ_entr_target
 
         if FLAGS.icnn_opt == 'adam':
-            y = tf.where(term_target, rew, rew + discount * q_target_entr)
-            y = tf.maximum(q_entr - 1., y)
-            y = tf.minimum(q_entr + 1., y)
+            # y = tf.where(term_target, rew, rew + discount * q_target_entr)
+            # y = tf.maximum(q_entr - 1., y)
+            # y = tf.minimum(q_entr + 1., y)
+            # y = tf.stop_gradient(y)
+
+            y = th.where(term_target, rew, rew + discount * q_target_entr)
+            y = th.max(q_entr - 1., y)
+            y = th.min(q_entr + 1., y)
             y = tf.stop_gradient(y)
             td_error = q_entr - y
         elif FLAGS.icnn_opt == 'bundle_entropy':
             raise RuntimError("Needs checking.")
-            q_target = tf.where(term2, rew, rew + discount * q2_entropy)
-            q_target = tf.maximum(q_entropy - 1., q_target)
-            q_target = tf.minimum(q_entropy + 1., q_target)
+            # q_target = tf.where(term2, rew, rew + discount * q2_entropy)
+            # q_target = tf.maximum(q_entropy - 1., q_target)
+            # q_target = tf.minimum(q_entropy + 1., q_target)
+            # q_target = tf.stop_gradient(q_target)
+            # td_error = q_entropy - q_target
+
+            q_target = th.where(term2, rew, rew + discount * q2_entropy)
+            q_target = th.max(q_entropy - 1., q_target)
+            q_target = th.min(q_entropy + 1., q_target)
             q_target = tf.stop_gradient(q_target)
             td_error = q_entropy - q_target
         ms_td_error = tf.reduce_mean(tf.square(td_error), 0)
@@ -121,30 +150,34 @@ class Agent:
         merged = tf.summary.merge_all()
 
         # tf functions
-        with self.sess.as_default():
-            self._train = Fun([obs, act, rew, obs_target, act_target, term_target],
-                              [optimize_q, update_target, loss_q],
-                              merged, summary_writer)
-            self._fg = Fun([obs, act], [negQ, act_grad])
-            self._fg_target = Fun([obs_target, act_target], [negQ_target, act_target_grad])
-            self._fg_entr = Fun([obs, act], [negQ_entr, act_grad_entr])
-            self._fg_entr_target = Fun([obs_target, act_target],
-                                       [negQ_entr_target, act_entr_target_grad])
+        # with self.sess.as_default():
+        self._train = Fun([obs, act, rew, obs_target, act_target, term_target],
+                            [optimize_q, update_target, loss_q],
+                            merged, summary_writer)
+        self._fg = Fun([obs, act], [negQ, act_grad])
+        self._fg_target = Fun([obs_target, act_target], [negQ_target, act_target_grad])
+        self._fg_entr = Fun([obs, act], [negQ_entr, act_grad_entr])
+        self._fg_entr_target = Fun([obs_target, act_target],
+                                    [negQ_entr_target, act_entr_target_grad])
 
         # initialize tf variables
         self.saver = tf.train.Saver(max_to_keep=1)
-        ckpt = tf.train.latest_checkpoint(FLAGS.outdir + "/tf")
-        if ckpt:
-            self.saver.restore(self.sess, ckpt)
-        else:
-            self.sess.run(tf.initialize_all_variables())
-            self.sess.run(self.makeCvx)
-            self.sess.run([theta_target_i.assign(theta_i)
-                    for theta_i, theta_target_i in zip(self.theta_, self.theta_target_)])
+        ckpt = tf.train.latest_checkpoint(FLAGS.outdir + "/th")
+        th.save(model.state_dict(), ckpt)
+        # if ckpt:
+        #     th.save(model.state_dict(), cpkt)
+        #     # self.saver.restore(self.sess, ckpt)
+        # else:
+        #     self.sess.run(tf.initialize_all_variables())
+        #     self.sess.run(self.makeCvx)
+        #     self.sess.run([theta_target_i.assign(theta_i)
+        #             for theta_i, theta_target_i in zip(self.theta_, self.theta_target_)])
 
-        self.sess.graph.finalize()
+        # self.sess.graph.finalize()
 
         self.t = 0  # global training time (number of observations)
+        self.is_training = True
+
 
     def bundle_entropy(self, func, obs):
         act = np.ones((obs.shape[0], self.dimA)) * 0.5
@@ -263,30 +296,32 @@ class Agent:
         self.observation = obs  # initial observation
 
     def act(self, test=False):
-        with self.sess.as_default():
-            print('--- Selecting action, test={}'.format(test))
-            obs = np.expand_dims(self.observation, axis=0)
+        # with self.sess.as_default():
+        print('--- Selecting action, test={}'.format(test))
+        obs = np.expand_dims(self.observation, axis=0)
 
-            if FLAGS.icnn_opt == 'adam':
-                f = self._fg_entr
-                # f = self._fg
-            elif FLAGS.icnn_opt == 'bundle_entropy':
-                f = self._fg
-            else:
-                raise RuntimeError("Unrecognized ICNN optimizer: "+FLAGS.icnn_opt)
+        if FLAGS.icnn_opt == 'adam':
+            f = self._fg_entr
+            # f = self._fg
+        elif FLAGS.icnn_opt == 'bundle_entropy':
+            f = self._fg
+        else:
+            raise RuntimeError("Unrecognized ICNN optimizer: "+FLAGS.icnn_opt)
 
-            tflearn.is_training(False)
-            action = self.opt(f, obs)
-            tflearn.is_training(not test)
+        self.is_training = False
+        # tflearn.is_training(False)
+        action = self.opt(f, obs)
+        # tflearn.is_training(not test)
+        self.is_training = not test
 
-            if not test:
-                self.noise -= FLAGS.outheta*self.noise - \
-                              FLAGS.ousigma*npr.randn(self.dimA)
-                action += self.noise
-            action = np.clip(action, -1, 1)
+        if not test:
+            self.noise -= FLAGS.outheta*self.noise - \
+                            FLAGS.ousigma*npr.randn(self.dimA)
+            action += self.noise
+        action = np.clip(action, -1, 1)
 
-            self.action = np.atleast_1d(np.squeeze(action, axis=0))
-            return self.action
+        self.action = np.atleast_1d(np.squeeze(action, axis=0))
+        return self.action
 
     def observe(self, rew, term, obs2, test=False):
         obs1 = self.observation
@@ -303,25 +338,27 @@ class Agent:
                     loss = self.train()
 
     def train(self):
-        with self.sess.as_default():
-            obs, act, rew, ob2, term2, info = self.rm.minibatch(size=FLAGS.bsize)
-            if FLAGS.icnn_opt == 'adam':
-                # f = self._opt_train_entr
-                f = self._fg_entr_target
-                # f = self._fg_target
-            elif FLAGS.icnn_opt == 'bundle_entropy':
-                f = self._fg_target
-            else:
-                raise RuntimeError("Unrecognized ICNN optimizer: "+FLAGS.icnn_opt)
-            print('--- Optimizing for training')
-            tflearn.is_training(False)
-            act2 = self.opt(f, ob2)
-            tflearn.is_training(True)
+        # with self.sess.as_default():
+        obs, act, rew, ob2, term2, info = self.rm.minibatch(size=FLAGS.bsize)
+        if FLAGS.icnn_opt == 'adam':
+            # f = self._opt_train_entr
+            f = self._fg_entr_target
+            # f = self._fg_target
+        elif FLAGS.icnn_opt == 'bundle_entropy':
+            f = self._fg_target
+        else:
+            raise RuntimeError("Unrecognized ICNN optimizer: "+FLAGS.icnn_opt)
+        print('--- Optimizing for training')
+        # tflearn.is_training(False)
+        self.is_training = False
+        act2 = self.opt(f, ob2)
+        self.is_training = True
+        # tflearn.is_training(True)
 
-            _, _, loss = self._train(obs, act, rew, ob2, act2, term2,
-                                     log=FLAGS.summary, global_step=self.t)
-            self.sess.run(self.proj)
-            return loss
+        _, _, loss = self._train(obs, act, rew, ob2, act2, term2,
+                                    log=FLAGS.summary, global_step=self.t)
+        # self.sess.run(self.proj)
+        return loss
 
     def negQ(self, x, y, reuse=False):
         szs = [FLAGS.l1size, FLAGS.l2size]
@@ -330,8 +367,8 @@ class Agent:
         bn = tflearn.batch_normalization
         lrelu = tflearn.activations.leaky_relu
 
-        if reuse:
-            tf.get_variable_scope().reuse_variables()
+        # if reuse:
+        #     tf.get_variable_scope().reuse_variables()
 
         nLayers = len(szs)
         us = []
@@ -344,12 +381,12 @@ class Agent:
 
         prevU = x
         for i in range(nLayers):
-            with tf.variable_scope('u'+str(i)) as s:
-                u = fc(prevU, szs[i], reuse=reuse, scope=s, regularizer=reg)
-                if i < nLayers-1:
-                    u = tf.nn.relu(u)
-                    if FLAGS.icnn_bn:
-                        u = bn(u, reuse=reuse, scope=s, name='bn')
+            # with tf.variable_scope('u'+str(i)) as s:
+            u = nn.Linear(prevU, szs[i])
+            if i < nLayers-1:
+                u = F.relu(u)
+                if FLAGS.icnn_bn:
+                    u = nn.BatchNorm1d(u)
             variable_summaries(u, suffix='u{}'.format(i))
             us.append(u)
             prevU = u
@@ -359,54 +396,49 @@ class Agent:
             sz = szs[i] if i < nLayers else 1
             z_add = []
             if i > 0:
-                with tf.variable_scope('z{}_zu_u'.format(i)) as s:
-                    zu_u = fc(prevU, szs[i-1], reuse=reuse, scope=s,
-                              activation='relu', bias=True,
-                              regularizer=reg, bias_init=tf.constant_initializer(1.))
-                    variable_summaries(zu_u, suffix='zu_u{}'.format(i))
-                with tf.variable_scope('z{}_zu_proj'.format(i)) as s:
-                    z_zu = fc(tf.multiply(prevZ, zu_u), sz, reuse=reuse, scope=s,
-                              bias=False, regularizer=reg)
-                    variable_summaries(z_zu, suffix='z_zu{}'.format(i))
+                # with tf.variable_scope('z{}_zu_u'.format(i)) as s:
+                zu_u = nn.Linear(prevU, szs[i-1])
+                variable_summaries(zu_u, suffix='zu_u{}'.format(i))
+                # with tf.variable_scope('z{}_zu_proj'.format(i)) as s:
+                z_zu = nn.Linear(tf.multiply(prevZ, zu_u), sz)
+                variable_summaries(z_zu, suffix='z_zu{}'.format(i))
                 z_zs.append(z_zu)
                 z_add.append(z_zu)
 
-            with tf.variable_scope('z{}_yu_u'.format(i)) as s:
-                yu_u = fc(prevU, self.dimA, reuse=reuse, scope=s, bias=True,
-                          regularizer=reg, bias_init=tf.constant_initializer(1.))
-                variable_summaries(yu_u, suffix='yu_u{}'.format(i))
-            with tf.variable_scope('z{}_yu'.format(i)) as s:
-                z_yu = fc(tf.multiply(y, yu_u), sz, reuse=reuse, scope=s, bias=False,
-                          regularizer=reg)
-                z_ys.append(z_yu)
-                variable_summaries(z_yu, suffix='z_yu{}'.format(i))
+            # with tf.variable_scope('z{}_yu_u'.format(i)) as s:
+            yu_u = nn.Linear(prevU, self.dimA)
+            variable_summaries(yu_u, suffix='yu_u{}'.format(i))
+            # with tf.variable_scope('z{}_yu'.format(i)) as s:
+            z_yu = nn.Linear(tf.multiply(y, yu_u), sz)
+            z_ys.append(z_yu)
+            variable_summaries(z_yu, suffix='z_yu{}'.format(i))
             z_add.append(z_yu)
 
-            with tf.variable_scope('z{}_u'.format(i)) as s:
-                z_u = fc(prevU, sz, reuse=reuse, scope=s,
-                         bias=True, regularizer=reg,
-                         bias_init=tf.constant_initializer(0.))
-                variable_summaries(z_u, suffix='z_u{}'.format(i))
+            # with tf.variable_scope('z{}_u'.format(i)) as s:
+            z_u = nn.Linear(prevU, sz, reuse=reuse, scope=s,
+                        bias=True, regularizer=reg,
+                        bias_init=tf.constant_initializer(0.))
+            variable_summaries(z_u, suffix='z_u{}'.format(i))
             z_us.append(z_u)
             z_add.append(z_u)
 
-            z = tf.add_n(z_add)
+            z = th.sum(z_add)
             variable_summaries(z, suffix='z{}_preact'.format(i))
             if i < nLayers:
                 # z = tf.nn.relu(z)
-                z = lrelu(z, alpha=FLAGS.lrelu)
+                z = F.leaky_relu(alpha=FLAGS.lrelu)
                 variable_summaries(z, suffix='z{}_act'.format(i))
 
             zs.append(z)
             prevU = us[i] if i < nLayers else None
             prevZ = z
 
-        z = tf.reshape(z, [-1], name='energies')
+        z = th.reshape(z, [-1], name='energies')
         return z
 
 
-    def __del__(self):
-        self.sess.close()
+    # def __del__(self):
+    #     self.sess.close()
 
 
 # Tensorflow utils
@@ -454,6 +486,6 @@ def exponential_moving_averages(theta, tau=0.001):
 
 
 def entropy(x): #the real concave entropy function
-    x_move_reg = tf.clip_by_value((x + 1) / 2, 0.0001, 0.9999)
-    pen = x_move_reg * tf.log(x_move_reg) + (1 - x_move_reg) * tf.log(1 - x_move_reg)
-    return -tf.reduce_sum(pen, 1)
+    x_move_reg = th.clamp((x + 1) / 2, 0.0001, 0.9999)
+    pen = x_move_reg * th.log(x_move_reg) + (1 - x_move_reg) * th.log(1 - x_move_reg)
+    return -th.sum(pen, 1)
