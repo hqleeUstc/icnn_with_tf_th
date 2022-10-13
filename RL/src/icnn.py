@@ -52,76 +52,47 @@ class Agent:
             raise RuntimeError("Unrecognized ICNN optimizer: "+FLAGS.icnn_opt)
 
         self.rm = ReplayMemory(FLAGS.rmsize, dimO, dimA)
-        th.set_num_threads(FLAGS.thread)
-
-        # self.sess = tf.Session(config=tf.ConfigProto(
-        #     inter_op_parallelism_threads=FLAGS.thread,
-        #     log_device_placement=False,
-        #     allow_soft_placement=True,
-        #     gpu_options=tf.GPUOptions(allow_growth=True)))
+        self.sess = tf.Session(config=tf.ConfigProto(
+            inter_op_parallelism_threads=FLAGS.thread,
+            log_device_placement=False,
+            allow_soft_placement=True,
+            gpu_options=tf.GPUOptions(allow_growth=True)))
+        # th.set_num_threads(FLAGS.thread)
 
         self.noise = np.zeros(self.dimA)
-
-        # obs = tf.placeholder(tf.float32, [None, dimO], "obs")
-        # act = tf.placeholder(tf.float32, [None, dimA], "act")
-        # rew = tf.placeholder(tf.float32, [None], "rew")
-        # obs = Variable(th.randn(None, dimO).type(float))
-        # act = Variable(th.randn(None, dimA).type(float))
-        # rew = Variable(th.randn(None).type(float))
-        # with tf.variable_scope('q'):
-        # negQ = self.negQ(obs, act)
-        # negQ_entr = negQ - entropy(act)
-        # q = -negQ
-        # q_entr = -negQ_entr
-        # act_grad, = tf.gradients(negQ, act)
-        # act_grad_entr, = tf.gradients(negQ_entr, act)
-        # # act_grad, = th.autograd.grad(negQ, act)
-        # # act_grad_entr, = th.autograd.grad(negQ_entr, act)
-
-        # obs_target = tf.placeholder(tf.float32, [None, dimO], "obs_target")
-        # act_target = tf.placeholder(tf.float32, [None, dimA], "act_target")
-        # term_target = tf.placeholder(tf.bool, [None], "term_target")
-        # with tf.variable_scope('q_target'):
-        #     negQ_target = self.negQ(obs_target, act_target)
-        
-        # negQ_entr_target = negQ_target - entropy(act_target)
-        # act_target_grad, = tf.gradients(negQ_target, act_target)
-        # act_entr_target_grad, = tf.gradients(negQ_entr_target, act_target)
-
-        # act_target_grad, = th.autograd.grad(negQ_target, act_target)
-        # act_entr_target_grad, = th.autograd.grad(negQ_entr_target, act_target)
-        # q_target = -negQ_target
-        # q_target_entr = -negQ_entr_target
+        # q
+        negQ = NegQ(obs, act)
+        negQ_entr = negQ - entropy(act)
+        q = -negQ
+        q_entr = -negQ_entr
+        act_grad, = tf.gradients(negQ, act)
+        act_grad_entr, = tf.gradients(negQ_entr, act)
+        # q target
+        negQ_target = self.negQ(obs_target, act_target)
+        negQ_entr_target = negQ_target - entropy(act_target)
+        act_target_grad, = tf.gradients(negQ_target, act_target)
+        act_entr_target_grad, = tf.gradients(negQ_entr_target, act_target)
+        q_target = -negQ_target
+        q_target_entr = -negQ_entr_target
 
         if FLAGS.icnn_opt == 'adam':
             # y = tf.where(term_target, rew, rew + discount * q_target_entr)
-            # y = tf.maximum(q_entr - 1., y)
-            # y = tf.minimum(q_entr + 1., y)
-            # y = tf.stop_gradient(y)
-
-            y = th.where(term_target, rew, rew + discount * q_target_entr)
-            y = th.max(q_entr - 1., y)
-            y = th.min(q_entr + 1., y)
+            y = tf.maximum(q_entr - 1., y)
+            y = tf.minimum(q_entr + 1., y)
             y = tf.stop_gradient(y)
             td_error = q_entr - y
         elif FLAGS.icnn_opt == 'bundle_entropy':
             raise RuntimError("Needs checking.")
             # q_target = tf.where(term2, rew, rew + discount * q2_entropy)
-            # q_target = tf.maximum(q_entropy - 1., q_target)
-            # q_target = tf.minimum(q_entropy + 1., q_target)
-            # q_target = tf.stop_gradient(q_target)
-            # td_error = q_entropy - q_target
-
-            q_target = th.where(term2, rew, rew + discount * q2_entropy)
-            q_target = th.max(q_entropy - 1., q_target)
-            q_target = th.min(q_entropy + 1., q_target)
+            q_target = tf.maximum(q_entropy - 1., q_target)
+            q_target = tf.minimum(q_entropy + 1., q_target)
             q_target = tf.stop_gradient(q_target)
             td_error = q_entropy - q_target
         ms_td_error = tf.reduce_mean(tf.square(td_error), 0)
 
         regLosses = tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES, scope='q/')
         loss_q = ms_td_error + l2norm*tf.reduce_sum(regLosses)
-
+     
         self.theta_ = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope='q/')
         self.theta_cvx_ = [v for v in self.theta_
                            if 'proj' in v.name and 'W:' in v.name]
@@ -360,87 +331,151 @@ class Agent:
         # self.sess.run(self.proj)
         return loss
 
-    def negQ(self, x, y, reuse=False):
-        szs = [FLAGS.l1size, FLAGS.l2size]
-        assert(len(szs) >= 1)
-        fc = tflearn.fully_connected
-        bn = tflearn.batch_normalization
-        lrelu = tflearn.activations.leaky_relu
 
-        # if reuse:
-        #     tf.get_variable_scope().reuse_variables()
 
-        nLayers = len(szs)
+
+
+    def __del__(self):
+        self.sess.close()
+
+
+class NegQ:
+    def __init__(self,x, y, reuse=False):
+        super(NegQ, self).__init__()
+
+        self.nLayers = 2
+        self.szs = [args.l1size, args.l2size]
+        self.fc1 = F.relu(FLAGS.l1size)
+        self.fc2 = F.relu(FLAGS.l2size)
+
+    def forward(self, x):
         us = []
         zs = []
         z_zs = []
         z_ys = []
         z_us = []
 
-        reg = 'L2'
 
         prevU = x
-        for i in range(nLayers):
+        for i in range(self.nLayers):
             # with tf.variable_scope('u'+str(i)) as s:
-            u = nn.Linear(prevU, szs[i])
-            if i < nLayers-1:
+            u = nn.Linear(prevU, self.szs[i])
+            if i < self.nLayers-1:
                 u = F.relu(u)
                 if FLAGS.icnn_bn:
                     u = nn.BatchNorm1d(u)
-            variable_summaries(u, suffix='u{}'.format(i))
-            us.append(u)
             prevU = u
+            us.append(u)
 
         prevU, prevZ = x, y
-        for i in range(nLayers+1):
-            sz = szs[i] if i < nLayers else 1
+        
+        for i in range(self.nLayers+1):
+            sz = self.szs[i] if i < self.nLayers else 1
             z_add = []
             if i > 0:
                 # with tf.variable_scope('z{}_zu_u'.format(i)) as s:
-                zu_u = nn.Linear(prevU, szs[i-1])
-                variable_summaries(zu_u, suffix='zu_u{}'.format(i))
+                zu_u = nn.Linear(prevU, self.szs[i-1])
+                # variable_summaries(zu_u, suffix='zu_u{}'.format(i))
                 # with tf.variable_scope('z{}_zu_proj'.format(i)) as s:
-                z_zu = nn.Linear(tf.multiply(prevZ, zu_u), sz)
-                variable_summaries(z_zu, suffix='z_zu{}'.format(i))
+                z_zu = nn.Linear(th.mul(prevZ, zu_u), sz)
+                # variable_summaries(z_zu, suffix='z_zu{}'.format(i))
                 z_zs.append(z_zu)
                 z_add.append(z_zu)
 
             # with tf.variable_scope('z{}_yu_u'.format(i)) as s:
             yu_u = nn.Linear(prevU, self.dimA)
-            variable_summaries(yu_u, suffix='yu_u{}'.format(i))
+            # variable_summaries(yu_u, suffix='yu_u{}'.format(i))
             # with tf.variable_scope('z{}_yu'.format(i)) as s:
-            z_yu = nn.Linear(tf.multiply(y, yu_u), sz)
+            z_yu = nn.Linear(tf.mul(y, yu_u), sz)
             z_ys.append(z_yu)
-            variable_summaries(z_yu, suffix='z_yu{}'.format(i))
+            # variable_summaries(z_yu, suffix='z_yu{}'.format(i))
             z_add.append(z_yu)
 
             # with tf.variable_scope('z{}_u'.format(i)) as s:
-            z_u = nn.Linear(prevU, sz, reuse=reuse, scope=s,
-                        bias=True, regularizer=reg,
-                        bias_init=tf.constant_initializer(0.))
-            variable_summaries(z_u, suffix='z_u{}'.format(i))
+            z_u = nn.Linear(prevU, sz)
+            # variable_summaries(z_u, suffix='z_u{}'.format(i))
             z_us.append(z_u)
             z_add.append(z_u)
 
-            z = th.sum(z_add)
-            variable_summaries(z, suffix='z{}_preact'.format(i))
-            if i < nLayers:
+            z = sum(z_add)
+            # variable_summaries(z, suffix='z{}_preact'.format(i))
+            if i < self.nLayers:
                 # z = tf.nn.relu(z)
-                z = F.leaky_relu(alpha=FLAGS.lrelu)
-                variable_summaries(z, suffix='z{}_act'.format(i))
+                z = F.leaky_relu(z, negative_slope=args.lrelu)
+                # variable_summaries(z, suffix='z{}_act'.format(i))
 
             zs.append(z)
-            prevU = us[i] if i < nLayers else None
+            prevU = us[i] if i < self.nLayers else None
             prevZ = z
-
-        z = th.reshape(z, [-1], name='energies')
+        
+        z = th.reshape(z, (-1))
         return z
 
+# 魔改tensorflow里的loss函数
+class AdamLoss(nn.Module):
+    def __init__(self, weight=None, size_average=True):
+        super(AdamLoss,self).__init__()
+        tau = FLAGS.tau
+        discount = FLAGS.discount
+        l2norm = FLAGS.l2norm
+        learning_rate = FLAGS.rate
+        outheta = FLAGS.outheta
+        ousigma = FLAGS.ousigma
 
-    # def __del__(self):
-    #     self.sess.close()
+    # inputs 对应 negQ = self.negQ(obs, act), targets 对应 act
+    def forward(self,negQ,act,smooth=1):
+        # negQ = NegQ(input, targets)
+        
+        negQ_entr = negQ - entropy(act)
+        q = -negQ
+        q_entr = -negQ_entr
+        act_grad, = tf.gradients(negQ, act)
+        act_grad_entr, = tf.gradients(negQ_entr, act)
 
 
+        # with tf.variable_scope('q_target'):
+        negQ_target = self.negQ(obs_target, act_target)
+        negQ_entr_target = negQ_target - entropy(act_target)
+        act_target_grad, = tf.gradients(negQ_target, act_target)
+        act_entr_target_grad, = tf.gradients(negQ_entr_target, act_target)
+        q_target = -negQ_target
+        q_target_entr = -negQ_entr_target
+
+
+        if FLAGS.icnn_opt == 'adam':
+            y = th.where(term_target, rew, rew + discount * q_target_entr)
+            y = th.max(q_entr - 1., y)
+            y = th.min(q_entr + 1., y)
+            # y = tf.stop_gradient(y)
+            td_error = q_entr - y
+
+        ms_td_error = th.mean(th.square(td_error), 0)
+
+        # adam时，l2正则和weight decay不一样？
+        # optimizer = torch.optim.Adam(model.parameters(), lr=1e-4, weight_decay=1e-5)
+
+        # l2 regularization 注意：只计算q这边的l2正则，不计算q_target这边的
+        # regLosses = tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES, scope='q/')
+        loss_q = ms_td_error + l2norm*th.sum(regLosses)
+
+        # self.theta_ = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope='q/')
+        # self.theta_cvx_ = [v for v in self.theta_
+        #                    if 'proj' in v.name and 'W:' in v.name]
+        # self.makeCvx = [v.assign(tf.abs(v)) for v in self.theta_cvx_]
+        # self.proj = [v.assign(tf.maximum(v, 0)) for v in self.theta_cvx_]
+        # # self.proj = [v.assign(tf.abs(v)) for v in self.theta_cvx_]
+
+        # self.theta_target_ = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES,
+        #                                        scope='q_target/')
+        # update_target = [theta_target_i.assign_sub(tau*(theta_target_i-theta_i))
+        #             for theta_i, theta_target_i in zip(self.theta_, self.theta_target_)]
+
+        # optim_q = tf.train.AdamOptimizer(learning_rate=learning_rate)
+        # grads_and_vars_q = optim_q.compute_gradients(loss_q)
+        # optimize_q = optim_q.apply_gradients(grads_and_vars_q)
+
+
+        
 # Tensorflow utils
 #
 class Fun:
